@@ -1,0 +1,532 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========== ENUMS ==========
+enum UserRole {
+  owner
+  kasir
+  akuntan
+}
+
+enum AccountType {
+  Asset
+  Liability
+  Equity
+  Revenue
+  Expense
+}
+
+enum JournalStatus {
+  draft
+  posted
+  void
+}
+
+enum InvoiceStatus {
+  draft
+  posted
+  paid
+  partially_paid
+  cancelled
+}
+
+enum PaymentMethod {
+  cash
+  bank_transfer
+  e_wallet
+  other
+}
+
+enum AdjustmentType {
+  supplies
+  depreciation
+  prepaidExpense
+  unearnedRevenue
+  accruedExpense
+  accruedRevenue
+  other
+}
+
+// ========== AUTHENTICATION ==========
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String   @db.VarChar(100)
+  email        String   @unique @db.VarChar(150)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  businessProfiles BusinessProfile[] @relation("BusinessOwner")
+  businessMembers  BusinessMember[]
+
+  @@map("users")
+}
+
+model BusinessProfile {
+  id           Int      @id @default(autoincrement())
+  ownerUserId  Int      @map("owner_user_id")
+  businessName String   @map("business_name") @db.VarChar(150)
+  address      String?  @db.Text
+  phone        String?  @db.VarChar(30)
+  taxId        String?  @map("tax_id") @db.VarChar(50)
+  baseCurrency String   @default("IDR") @map("base_currency") @db.VarChar(10)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  owner              User                @relation("BusinessOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  members            BusinessMember[]
+  chartOfAccounts    ChartOfAccount[]
+  taxes              Tax[]
+  journals           Journal[]
+  cashBankAccounts   CashBankAccount[]
+  products           Product[]
+  stockMovements     StockMovement[]
+  customers          Customer[]
+  salesInvoices      SalesInvoice[]
+  receipts           Receipt[]
+  suppliers          Supplier[]
+  purchaseInvoices   PurchaseInvoice[]
+  purchasePayments   PurchasePayment[]
+  fixedAssets        FixedAsset[]
+  assetDepreciations AssetDepreciation[]
+  accountingPeriods  AccountingPeriod[]
+  capitalMovements   CapitalMovement[]
+
+  @@index([ownerUserId])
+  @@map("business_profiles")
+}
+
+model BusinessMember {
+  id         Int      @id @default(autoincrement())
+  businessId Int      @map("business_id")
+  userId     Int      @map("user_id")
+  role       UserRole @default(kasir)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, userId])
+  @@index([userId])
+  @@map("business_members")
+}
+
+// ========== INTI AKUNTANSI ==========
+model ChartOfAccount {
+  id            Int         @id @default(autoincrement())
+  businessId    Int         @map("business_id")
+  code          String      @db.VarChar(20)
+  name          String      @db.VarChar(100)
+  accountType   AccountType @map("account_type")
+  parentId      Int?        @map("parent_id")
+  isActive      Boolean     @default(true) @map("is_active")
+  normalBalance String?     @map("normal_balance")
+  isContra      Boolean     @default(false) @map("is_contra")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  business         BusinessProfile   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  parent           ChartOfAccount?   @relation("CoAParent", fields: [parentId], references: [id])
+  children         ChartOfAccount[]  @relation("CoAParent")
+  journalLines     JournalLine[]
+  cashBankAccounts CashBankAccount[]
+
+  @@unique([businessId, code])
+  @@index([businessId])
+  @@index([parentId])
+  @@map("chart_of_accounts")
+}
+
+model Tax {
+  id         Int      @id @default(autoincrement())
+  businessId Int      @map("business_id")
+  code       String   @db.VarChar(20)
+  name       String   @db.VarChar(100)
+  rate       Decimal  @db.Decimal(5, 2)
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, code])
+  @@index([businessId])
+  @@map("taxes")
+}
+
+model Journal {
+  id             Int            @id @default(autoincrement())
+  businessId     Int            @map("business_id")
+  journalNo      String         @map("journal_no") @db.VarChar(50)
+  journalDate    DateTime       @map("journal_date") @db.Date
+  description    String?        @db.Text
+  status         JournalStatus  @default(draft)
+  isAdjustment   Boolean        @default(false) @map("is_adjustment")
+  adjustmentType AdjustmentType? @map("adjustment_type")
+  periodYear     Int?           @map("period_year")
+  periodMonth    Int?           @map("period_month")
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  business           BusinessProfile     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  lines              JournalLine[]
+  assetDepreciations AssetDepreciation[]
+
+  @@unique([businessId, journalNo])
+  @@index([businessId])
+  @@index([journalDate])
+  @@map("journals")
+}
+
+model JournalLine {
+  id        Int     @id @default(autoincrement())
+  journalId Int     @map("journal_id")
+  coaId     Int     @map("coa_id")
+  debit     Decimal @default(0) @db.Decimal(18, 2)
+  credit    Decimal @default(0) @db.Decimal(18, 2)
+  memo      String? @db.Text
+
+  journal Journal        @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  coa     ChartOfAccount @relation(fields: [coaId], references: [id])
+
+  @@index([journalId])
+  @@index([coaId])
+  @@map("journal_lines")
+}
+
+// ========== KAS / BANK ==========
+model CashBankAccount {
+  id             Int      @id @default(autoincrement())
+  businessId     Int      @map("business_id")
+  coaId          Int      @unique @map("coa_id")
+  name           String   @db.VarChar(100)
+  accountNumber  String?  @map("account_number") @db.VarChar(100)
+  bankName       String?  @map("bank_name") @db.VarChar(100)
+  openingBalance Decimal  @default(0) @map("opening_balance") @db.Decimal(18, 2)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  business         BusinessProfile   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  coa              ChartOfAccount    @relation(fields: [coaId], references: [id])
+  receipts         Receipt[]
+  purchasePayments PurchasePayment[]
+
+  @@index([businessId])
+  @@map("cash_bank_accounts")
+}
+
+// ========== STOK ==========
+model Product {
+  id            Int      @id @default(autoincrement())
+  businessId    Int      @map("business_id")
+  sku           String   @db.VarChar(50)
+  name          String   @db.VarChar(150)
+  unit          String?  @db.VarChar(30)
+  purchasePrice Decimal  @default(0) @map("purchase_price") @db.Decimal(18, 2)
+  sellingPrice  Decimal  @default(0) @map("selling_price") @db.Decimal(18, 2)
+  stock         Decimal  @default(0) @db.Decimal(18, 3)
+  minimumStock  Decimal  @default(0) @map("minimum_stock") @db.Decimal(18, 3)
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  business             BusinessProfile       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  stockMovements       StockMovement[]
+  salesInvoiceLines    SalesInvoiceLine[]
+  purchaseInvoiceLines PurchaseInvoiceLine[]
+
+  @@unique([businessId, sku])
+  @@index([businessId])
+  @@map("products")
+}
+
+model StockMovement {
+  id            Int      @id @default(autoincrement())
+  businessId    Int      @map("business_id")
+  productId     Int      @map("product_id")
+  movementDate  DateTime @default(now()) @map("movement_date") @db.Timestamp(6)
+  quantity      Decimal  @db.Decimal(18, 3)
+  unitCost      Decimal  @default(0) @map("unit_cost") @db.Decimal(18, 2)
+  movementType  String   @map("movement_type") @db.VarChar(30)
+  referenceType String?  @map("reference_type") @db.VarChar(50)
+  referenceId   Int?     @map("reference_id")
+  notes         String?  @db.Text
+
+  business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  product  Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([productId])
+  @@index([movementDate])
+  @@map("stock_movements")
+}
+
+// ========== PENJUALAN AR ==========
+model Customer {
+  id          Int      @id @default(autoincrement())
+  businessId  Int      @map("business_id")
+  code        String   @db.VarChar(30)
+  name        String   @db.VarChar(150)
+  phone       String?  @db.VarChar(30)
+  address     String?  @db.Text
+  creditLimit Decimal  @default(0) @map("credit_limit") @db.Decimal(18, 2)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  business      BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  salesInvoices SalesInvoice[]
+  receipts      Receipt[]
+
+  @@unique([businessId, code])
+  @@index([businessId])
+  @@map("customers")
+}
+
+model SalesInvoice {
+  id             Int           @id @default(autoincrement())
+  businessId     Int           @map("business_id")
+  customerId     Int?          @map("customer_id")
+  invoiceNo      String        @map("invoice_no") @db.VarChar(50)
+  invoiceDate    DateTime      @map("invoice_date") @db.Date
+  dueDate        DateTime?     @map("due_date") @db.Date
+  subtotal       Decimal       @default(0) @db.Decimal(18, 2)
+  taxAmount      Decimal       @default(0) @map("tax_amount") @db.Decimal(18, 2)
+  discountAmount Decimal       @default(0) @map("discount_amount") @db.Decimal(18, 2)
+  totalAmount    Decimal       @default(0) @map("total_amount") @db.Decimal(18, 2)
+  paidAmount     Decimal       @default(0) @map("paid_amount") @db.Decimal(18, 2)
+  status         InvoiceStatus @default(draft)
+  notes          String?       @db.Text
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  business BusinessProfile    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer Customer?          @relation(fields: [customerId], references: [id])
+  lines    SalesInvoiceLine[]
+  receipts Receipt[]
+
+  @@unique([businessId, invoiceNo])
+  @@index([businessId])
+  @@index([customerId])
+  @@index([invoiceDate])
+  @@map("sales_invoices")
+}
+
+model SalesInvoiceLine {
+  id             Int     @id @default(autoincrement())
+  salesInvoiceId Int     @map("sales_invoice_id")
+  productId      Int     @map("product_id")
+  quantity       Decimal @db.Decimal(18, 3)
+  unitPrice      Decimal @map("unit_price") @db.Decimal(18, 2)
+  discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(18, 2)
+  taxAmount      Decimal @default(0) @map("tax_amount") @db.Decimal(18, 2)
+  subtotal       Decimal @default(0) @db.Decimal(18, 2)
+
+  salesInvoice SalesInvoice @relation(fields: [salesInvoiceId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id])
+
+  @@index([salesInvoiceId])
+  @@index([productId])
+  @@map("sales_invoice_lines")
+}
+
+model Receipt {
+  id                Int           @id @default(autoincrement())
+  businessId        Int           @map("business_id")
+  salesInvoiceId    Int?          @map("sales_invoice_id")
+  customerId        Int?          @map("customer_id")
+  receiptNo         String        @map("receipt_no") @db.VarChar(50)
+  receiptDate       DateTime      @map("receipt_date") @db.Date
+  amount            Decimal       @db.Decimal(18, 2)
+  paymentMethod     PaymentMethod @map("payment_method")
+  cashBankAccountId Int?          @map("cash_bank_account_id")
+  notes             String?       @db.Text
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  business        BusinessProfile  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  salesInvoice    SalesInvoice?    @relation(fields: [salesInvoiceId], references: [id])
+  customer        Customer?        @relation(fields: [customerId], references: [id])
+  cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
+
+  @@unique([businessId, receiptNo])
+  @@index([businessId])
+  @@index([salesInvoiceId])
+  @@index([customerId])
+  @@map("receipts")
+}
+
+// ========== PEMBELIAN AP ==========
+model Supplier {
+  id         Int      @id @default(autoincrement())
+  businessId Int      @map("business_id")
+  code       String   @db.VarChar(30)
+  name       String   @db.VarChar(150)
+  phone      String?  @db.VarChar(30)
+  address    String?  @db.Text
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  business         BusinessProfile   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  purchaseInvoices PurchaseInvoice[]
+  purchasePayments PurchasePayment[]
+
+  @@unique([businessId, code])
+  @@index([businessId])
+  @@map("suppliers")
+}
+
+model PurchaseInvoice {
+  id             Int           @id @default(autoincrement())
+  businessId     Int           @map("business_id")
+  supplierId     Int?          @map("supplier_id")
+  invoiceNo      String        @map("invoice_no") @db.VarChar(50)
+  invoiceDate    DateTime      @map("invoice_date") @db.Date
+  dueDate        DateTime?     @map("due_date") @db.Date
+  subtotal       Decimal       @default(0) @db.Decimal(18, 2)
+  taxAmount      Decimal       @default(0) @map("tax_amount") @db.Decimal(18, 2)
+  discountAmount Decimal       @default(0) @map("discount_amount") @db.Decimal(18, 2)
+  totalAmount    Decimal       @default(0) @map("total_amount") @db.Decimal(18, 2)
+  paidAmount     Decimal       @default(0) @map("paid_amount") @db.Decimal(18, 2)
+  status         InvoiceStatus @default(draft)
+  notes          String?       @db.Text
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  business BusinessProfile       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  supplier Supplier?             @relation(fields: [supplierId], references: [id])
+  lines    PurchaseInvoiceLine[]
+  payments PurchasePayment[]
+
+  @@unique([businessId, invoiceNo])
+  @@index([businessId])
+  @@index([supplierId])
+  @@index([invoiceDate])
+  @@map("purchase_invoices")
+}
+
+model PurchaseInvoiceLine {
+  id                Int     @id @default(autoincrement())
+  purchaseInvoiceId Int     @map("purchase_invoice_id")
+  productId         Int     @map("product_id")
+  quantity          Decimal @db.Decimal(18, 3)
+  unitPrice         Decimal @map("unit_price") @db.Decimal(18, 2)
+  discountAmount    Decimal @default(0) @map("discount_amount") @db.Decimal(18, 2)
+  taxAmount         Decimal @default(0) @map("tax_amount") @db.Decimal(18, 2)
+  subtotal          Decimal @default(0) @db.Decimal(18, 2)
+
+  purchaseInvoice PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
+  product         Product         @relation(fields: [productId], references: [id])
+
+  @@index([purchaseInvoiceId])
+  @@index([productId])
+  @@map("purchase_invoice_lines")
+}
+
+model PurchasePayment {
+  id                Int           @id @default(autoincrement())
+  businessId        Int           @map("business_id")
+  purchaseInvoiceId Int?          @map("purchase_invoice_id")
+  supplierId        Int?          @map("supplier_id")
+  paymentNo         String        @map("payment_no") @db.VarChar(50)
+  paymentDate       DateTime      @map("payment_date") @db.Date
+  amount            Decimal       @db.Decimal(18, 2)
+  paymentMethod     PaymentMethod @map("payment_method")
+  cashBankAccountId Int?          @map("cash_bank_account_id")
+  notes             String?       @db.Text
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  business        BusinessProfile  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  purchaseInvoice PurchaseInvoice? @relation(fields: [purchaseInvoiceId], references: [id])
+  supplier        Supplier?        @relation(fields: [supplierId], references: [id])
+  cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
+
+  @@unique([businessId, paymentNo])
+  @@index([businessId])
+  @@index([purchaseInvoiceId])
+  @@index([supplierId])
+  @@map("purchase_payments")
+}
+
+// ========== ASET ==========
+model FixedAsset {
+  id                      Int      @id @default(autoincrement())
+  businessId              Int      @map("business_id")
+  code                    String   @db.VarChar(30)
+  name                    String   @db.VarChar(150)
+  acquisitionDate         DateTime @map("acquisition_date") @db.Date
+  acquisitionCost         Decimal  @map("acquisition_cost") @db.Decimal(18, 2)
+  usefulLifeMonths        Int      @map("useful_life_months")
+  residualValue           Decimal  @default(0) @map("residual_value") @db.Decimal(18, 2)
+  accumulatedDepreciation Decimal  @default(0) @map("accumulated_depreciation") @db.Decimal(18, 2)
+  bookValue               Decimal  @map("book_value") @db.Decimal(18, 2)
+  isActive                Boolean  @default(true) @map("is_active")
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  business      BusinessProfile     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  depreciations AssetDepreciation[]
+
+  @@unique([businessId, code])
+  @@index([businessId])
+  @@map("fixed_assets")
+}
+
+model AssetDepreciation {
+  id                 Int      @id @default(autoincrement())
+  businessId         Int      @map("business_id")
+  fixedAssetId       Int      @map("fixed_asset_id")
+  depreciationDate   DateTime @map("depreciation_date") @db.Date
+  depreciationAmount Decimal  @map("depreciation_amount") @db.Decimal(18, 2)
+  accumulatedAmount  Decimal  @map("accumulated_amount") @db.Decimal(18, 2)
+  bookValue          Decimal  @map("book_value") @db.Decimal(18, 2)
+  journalId          Int?     @map("journal_id")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  business   BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  fixedAsset FixedAsset      @relation(fields: [fixedAssetId], references: [id], onDelete: Cascade)
+  journal    Journal?        @relation(fields: [journalId], references: [id])
+
+  @@index([businessId])
+  @@index([fixedAssetId])
+  @@index([depreciationDate])
+  @@map("asset_depreciations")
+}
+
+model AccountingPeriod {
+  id         Int       @id @default(autoincrement())
+  businessId Int       @map("business_id")
+  year       Int
+  month      Int
+  status     String    @default("open")
+  closedAt   DateTime? @map("closed_at")
+
+  business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, year, month])
+  @@map("accounting_periods")
+}
+
+model CapitalMovement {
+  id          Int      @id @default(autoincrement())
+  businessId  Int      @map("business_id")
+  date        DateTime @db.Date
+  type        String
+  amount      Decimal  @db.Decimal(18, 2)
+  description String?  @db.Text
+  journalId   Int?     @map("journal_id")
+
+  business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("capital_movements")
+}

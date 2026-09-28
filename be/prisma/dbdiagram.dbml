@@ -1,0 +1,440 @@
+// Generated from prisma/schema.prisma 2026-09-16 — sinkron dengan sistem saat ini
+// Catatan sistem: pagination 10/page untuk semua list (businesses, journals, sales/purchase/receipt/payment, products, reports, transfer history)
+// Penomoran: invoiceNo/receiptNo/paymentNo bisa manual atau auto via prefix client (SI, PB, RC, PP) -> sistem generate {prefix}{001} urut global per business per prefix per tabel (src/common/utils/numbering.js)
+// JournalNo auto: JU-SALES-*, JU-PURCHASE-*, JU-RECEIPT-*, JU-PAYMENT-*, JU-MANUAL-*, JU-TRF-*, JU-DEP-*
+
+Enum user_role {
+  owner
+  kasir
+  akuntan
+}
+
+Enum account_type {
+  Asset
+  Liability
+  Equity
+  Revenue
+  Expense
+}
+
+Enum journal_status {
+  draft
+  posted
+  void
+}
+
+Enum invoice_status {
+  draft
+  posted
+  paid
+  partially_paid
+  cancelled
+}
+
+Enum payment_method {
+  cash
+  bank_transfer
+  e_wallet
+  other
+}
+
+Table users {
+  id int [pk, increment]
+  name varchar(100) [not null]
+  email varchar(150) [not null, unique]
+  password_hash varchar(255) [not null]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+Table business_profiles {
+  id int [pk, increment]
+  owner_user_id int [not null, ref: > users.id]
+  business_name varchar(150) [not null]
+  address text
+  phone varchar(30)
+  tax_id varchar(50)
+  base_currency varchar(10) [default: 'IDR']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    owner_user_id
+  }
+}
+
+Table business_members {
+  id int [pk, increment]
+  business_id int [not null, ref: > business_profiles.id]
+  user_id int [not null, ref: > users.id]
+  role user_role [not null, default: 'kasir']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    (business_id, user_id) [unique]
+    user_id
+  }
+}
+
+Table chart_of_accounts {
+  id int [pk, increment]
+  business_id int [not null, ref: > business_profiles.id]
+  code varchar(20) [not null]
+  name varchar(100) [not null]
+  account_type account_type [not null]
+  parent_id int [ref: > chart_of_accounts.id]
+  is_active boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    (business_id, code) [unique]
+    business_id
+    parent_id
+  }
+}
+
+Table taxes {
+  id int [pk, increment]
+  business_id int [not null, ref: > business_profiles.id]
+  code varchar(20) [not null]
+  name varchar(100) [not null]
+  rate decimal(5,2) [not null]
+  is_active boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    (business_id, code) [unique]
+    business_id
+  }
+}
+
+Table journals {
+  id int [pk, increment]
+  business_id int [not null, ref: > business_profiles.id]
+  journal_no varchar(50) [not null]
+  journal_date date [not null]
+  description text
+  status journal_status [not null, default: 'draft']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    (business_id, journal_no) [unique]
+    business_id
+    journal_date
+  }
+}
+
+Table journal_lines {
+  id int [pk, increment]
+  journal_id int [not null, ref: > journals.id]
+  coa_id int [not null, ref: > chart_of_accounts.id]
+  debit decimal(18,2) [default: 0]
+  credit decimal(18,2) [default: 0]
+  memo text
+
+  Indexes {
+    journal_id
+    coa_id
+  }
+}
+
+Table cash_bank_accounts {
+  id int [pk, increment]
+  business_id int [not null, ref: > business_profiles.id]
+  coa_id int [not null, unique, ref: - chart_of_accounts.id]
+  name varchar(100) [not null]
+  account_number varchar(100)
+  bank_name varchar(100)
+  opening_balance decimal(18,2) [default: 0]
+  is_active boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    business_id
+  }
+}
+
+Table products {
+  id int [pk, increment]
+  business_id int [not null, ref: > business_profiles.id]
+  sku varchar(50) [not null]
+  name varchar(150) [not null]
+  unit varchar(30)
+  purchase_price decimal(18,2) [not null, default: 0]
+  selling_price decimal(18,2) [not null, default: 0]
+  stock decimal(18,3) [not null, default: 0]
+  minimum_stock decimal(18,3) [default: 0]
+  is_active boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    (business_id, sku) [unique]
+    business_id
+  }
+}
+
+Table stock_movements {
+  id int [pk, increment]
+  business_id int [not null, ref: > business_profiles.id]
+  product_id int [not null, ref: > products.id]
+  movement_date timestamp [default: `now()`]
+  quantity decimal(18,3) [not null]
+  unit_cost decimal(18,2) [not null, default: 0]
+  movement_type varchar(30) [not null]
+  reference_type varchar(50)
+  reference_id int
+  notes text
+
+  Indexes {
+    business_id
+    product_id
+    movement_date
+  }
+}
+
+Table customers {
+  id int [pk, increment]
+  business_id int [not null, ref: > business_profiles.id]
+  code varchar(30) [not null]
+  name varchar(150) [not null]
+  phone varchar(30)
+  address text
+  credit_limit decimal(18,2) [default: 0]
+  is_active boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    (business_id, code) [unique]
+    business_id
+  }
+}
+
+Table sales_invoices {
+  id int [pk, increment]
+  business_id int [not null, ref: > business_profiles.id]
+  customer_id int [ref: > customers.id]
+  invoice_no varchar(50) [not null]
+  invoice_date date [not null]
+  due_date date
+  subtotal decimal(18,2) [default: 0]
+  tax_amount decimal(18,2) [default: 0]
+  discount_amount decimal(18,2) [default: 0]
+  total_amount decimal(18,2) [default: 0]
+  paid_amount decimal(18,2) [default: 0]
+  status invoice_status [not null, default: 'draft']
+  notes text
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    (business_id, invoice_no) [unique]
+    business_id
+    customer_id
+    invoice_date
+  }
+}
+
+Table sales_invoice_lines {
+  id int [pk, increment]
+  sales_invoice_id int [not null, ref: > sales_invoices.id]
+  product_id int [not null, ref: > products.id]
+  quantity decimal(18,3) [not null]
+  unit_price decimal(18,2) [not null]
+  discount_amount decimal(18,2) [default: 0]
+  tax_amount decimal(18,2) [default: 0]
+  subtotal decimal(18,2) [default: 0]
+
+  Indexes {
+    sales_invoice_id
+    product_id
+  }
+}
+
+Table receipts {
+  id int [pk, increment]
+  business_id int [not null, ref: > business_profiles.id]
+  sales_invoice_id int [ref: > sales_invoices.id]
+  customer_id int [ref: > customers.id]
+  receipt_no varchar(50) [not null]
+  receipt_date date [not null]
+  amount decimal(18,2) [not null]
+  payment_method payment_method [not null]
+  cash_bank_account_id int [ref: > cash_bank_accounts.id]
+  notes text
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    (business_id, receipt_no) [unique]
+    business_id
+    sales_invoice_id
+    customer_id
+  }
+}
+
+Table suppliers {
+  id int [pk, increment]
+  business_id int [not null, ref: > business_profiles.id]
+  code varchar(30) [not null]
+  name varchar(150) [not null]
+  phone varchar(30)
+  address text
+  is_active boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    (business_id, code) [unique]
+    business_id
+  }
+}
+
+Table purchase_invoices {
+  id int [pk, increment]
+  business_id int [not null, ref: > business_profiles.id]
+  supplier_id int [ref: > suppliers.id]
+  invoice_no varchar(50) [not null]
+  invoice_date date [not null]
+  due_date date
+  subtotal decimal(18,2) [default: 0]
+  tax_amount decimal(18,2) [default: 0]
+  discount_amount decimal(18,2) [default: 0]
+  total_amount decimal(18,2) [default: 0]
+  paid_amount decimal(18,2) [default: 0]
+  status invoice_status [not null, default: 'draft']
+  notes text
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    (business_id, invoice_no) [unique]
+    business_id
+    supplier_id
+    invoice_date
+  }
+}
+
+Table purchase_invoice_lines {
+  id int [pk, increment]
+  purchase_invoice_id int [not null, ref: > purchase_invoices.id]
+  product_id int [not null, ref: > products.id]
+  quantity decimal(18,3) [not null]
+  unit_price decimal(18,2) [not null]
+  discount_amount decimal(18,2) [default: 0]
+  tax_amount decimal(18,2) [default: 0]
+  subtotal decimal(18,2) [default: 0]
+
+  Indexes {
+    purchase_invoice_id
+    product_id
+  }
+}
+
+Table purchase_payments {
+  id int [pk, increment]
+  business_id int [not null, ref: > business_profiles.id]
+  purchase_invoice_id int [ref: > purchase_invoices.id]
+  supplier_id int [ref: > suppliers.id]
+  payment_no varchar(50) [not null]
+  payment_date date [not null]
+  amount decimal(18,2) [not null]
+  payment_method payment_method [not null]
+  cash_bank_account_id int [ref: > cash_bank_accounts.id]
+  notes text
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    (business_id, payment_no) [unique]
+    business_id
+    purchase_invoice_id
+    supplier_id
+  }
+}
+
+Table fixed_assets {
+  id int [pk, increment]
+  business_id int [not null, ref: > business_profiles.id]
+  code varchar(30) [not null]
+  name varchar(150) [not null]
+  acquisition_date date [not null]
+  acquisition_cost decimal(18,2) [not null]
+  useful_life_months int [not null]
+  residual_value decimal(18,2) [default: 0]
+  accumulated_depreciation decimal(18,2) [default: 0]
+  book_value decimal(18,2) [not null]
+  is_active boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    (business_id, code) [unique]
+    business_id
+  }
+}
+
+Table asset_depreciations {
+  id int [pk, increment]
+  business_id int [not null, ref: > business_profiles.id]
+  fixed_asset_id int [not null, ref: > fixed_assets.id]
+  depreciation_date date [not null]
+  depreciation_amount decimal(18,2) [not null]
+  accumulated_amount decimal(18,2) [not null]
+  book_value decimal(18,2) [not null]
+  journal_id int [ref: > journals.id]
+  created_at timestamp [default: `now()`]
+
+  Indexes {
+    business_id
+    fixed_asset_id
+    depreciation_date
+  }
+}
+
+TableGroup authentication {
+  users
+  business_profiles
+  business_members
+}
+
+TableGroup inti_akuntansi {
+  chart_of_accounts
+  taxes
+  journals
+  journal_lines
+}
+
+TableGroup kas_bank {
+  cash_bank_accounts
+}
+
+TableGroup penjualan_ar {
+  customers
+  sales_invoices
+  sales_invoice_lines
+  receipts
+}
+
+TableGroup pembelian_ap {
+  suppliers
+  purchase_invoices
+  purchase_invoice_lines
+  purchase_payments
+}
+
+TableGroup stok {
+  products
+  stock_movements
+}
+
+TableGroup aset {
+  fixed_assets
+  asset_depreciations
+}
