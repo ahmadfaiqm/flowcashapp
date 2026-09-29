@@ -11,21 +11,20 @@ logo company. File Railway/Docker (`be/Dockerfile`, `be/railway.toml`, `be/rende
 dipertahankan selama transisi dan dihapus setelah backend Vercel terbukti jalan.
 Pendekatan yang dipilih: Adapter Express (opsi B fungsi per-route dan opsi C campur ditolak).
 
-## 2. Arsitektur Vercel monorepo
+## 2. Arsitektur Vercel monorepo (services mode — amendemen 2026-09-29)
 
-- Tambah `api/index.js` di root: me-re-export aplikasi Express dari `be/src/app` tanpa `listen`.
-  `be/src/server.js` tetap untuk lokal/Railway dan tidak diubah perilakunya.
-- Tambah `vercel.json` di root: rewrite `/api/(.*)` ke `/api/index`, sisanya ke FE statis hasil
-  build `fe/dist`. Build command menginstall `be/` + `fe/`, menjalankan `prisma generate`,
-  lalu `vite build`. `fe/vercel.json` yang lama tidak dipakai lagi untuk deploy utama.
-- `be/src/config/database.js` diubah ke singleton `globalThis` agar reuse antar invocation
-  serverless tidak menghabiskan koneksi. `trust proxy` dan CORS di `be/src/app.js:15-23`
-  sudah benar, tinggal set `CORS_ORIGIN` ke domain Vercel (credentials true, bukan `*`).
-- Batasan platform: timeout function Vercel paket Hobby 10-60 detik, tanpa WebSocket/koneksi
-  persisten. Query dashboard/reports harus tetap cepat; tidak ada perubahan protokol auth
-  (JWT Bearer + `X-Business-Id` tetap seperti `fe/src/lib/api.ts:11-17`).
+Keputusan awal adapter Express (`api/index.js`) diganti Vercel services mode atas
+konfirmasi pemilik repo. Root `vercel.json` mendefinisikan dua service: `be`
+(root `be`, framework `express`, build `npx prisma generate`) dan `fe` (root `fe`,
+framework `vite`). Rewrite: `/api/(.*)` → service `be`, `/(.*)` → service `fe`.
+- Tidak ada bindings: FE adalah static build (binding hanya resolve di runtime function,
+  tidak saat Vite build). FE memakai `VITE_API_URL=/api/v1` same-origin lewat rewrite publik.
+- `be/src/server.js` tetap dipakai (Vercel meng-inject `PORT`); `trust proxy` dan CORS di
+  `be/src/app.js:15-23` sudah benar, tinggal set `CORS_ORIGIN` ke domain Vercel.
+- `be/src/config/database.js` singleton `globalThis` tetap dipakai (aman untuk reuse koneksi).
+- Batasan platform: tanpa WebSocket/koneksi persisten. Query dashboard/reports harus tetap cepat.
 - Fase 1: file Railway/Docker tidak dihapus (fallback). Fase 2 setelah kriteria sukses
-  Bagian 6 terpenuhi: hapus ketiga file, update `README-DEPLOY.md`.
+  Bagian 6 terpenuhi: hapus ketiga file + `fe/vercel.json` yang lama, update `README-DEPLOY.md`.
 
 ## 3. Database Supabase Postgres
 

@@ -1,8 +1,18 @@
 {
-  "buildCommand": "npm --prefix be install && npx --prefix be prisma generate && npm --prefix fe install && npm --prefix fe run build",
-  "outputDirectory": "fe/dist",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "be": {
+      "root": "be",
+      "framework": "express",
+      "buildCommand": "npx prisma generate"
+    },
+    "fe": {
+      "root": "fe",
+      "framework": "vite"
+    }
+  },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/api/(.*)", "destination": { "service": "be" } },
+    { "source": "/(.*)", "destination": { "service": "fe" } }
   ]
 }

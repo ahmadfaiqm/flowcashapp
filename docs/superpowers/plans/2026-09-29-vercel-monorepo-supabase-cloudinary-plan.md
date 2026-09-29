@@ -207,7 +207,14 @@ git commit -m "feat(be): prisma singleton safe for serverless reuse"
 
 ---
 
-### Task 4: Vercel monorepo entry (`api/index.js` + root `vercel.json`)
+### Task 4: Vercel services mode (AMENDED 2026-09-29 — adapter approach replaced)
+
+> Amendemen: pendekatan adapter `api/index.js` dibatalkan atas konfirmasi pemilik repo.
+> Yang diimplementasi: root `vercel.json` services mode (`be` express + `fe` vite,
+> rewrite `/api/(.*)` → be, `/(.*)` → fe, tanpa bindings). File `api/index.js` dan
+> `be/tests/vercel-entry.test.js` dihapus. Langkah 1-8 asli di bawah ini usang dan
+> tidak dijalankan; sebagai gantinya: tulis `vercel.json` services, hapus 2 file,
+> verifikasi BE suite + FE build hijau.
 
 **Files:**
 - Create: `api/index.js`
