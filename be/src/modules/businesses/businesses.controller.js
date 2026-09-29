@@ -25,4 +25,14 @@ async function myRole(req, res) {
   return success(res, data, 'Role fetched');
 }
 
-module.exports = { create, list, getById, update, myRole };
+async function uploadLogo(req, res) {
+  const data = await service.uploadLogo(req.user.id, req.params.id, req.file);
+  return success(res, data, 'Business logo updated');
+}
+
+async function deleteLogo(req, res) {
+  const data = await service.deleteLogo(req.user.id, req.params.id);
+  return success(res, data, 'Business logo removed');
+}
+
+module.exports = { create, list, getById, update, myRole, uploadLogo, deleteLogo };

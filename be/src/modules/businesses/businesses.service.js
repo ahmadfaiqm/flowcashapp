@@ -1,6 +1,8 @@
 const prisma = require('../../config/database');
 const { parsePagination, buildMeta } = require('../../common/utils/pagination');
 const repo = require('./businesses.repository');
+const cloudinary = require('../../common/cloudinary');
+const ApiError = require('../../common/utils/ApiError');
 
 async function create(userId, body) {
   return prisma.$transaction(async (tx) => {
@@ -88,4 +90,47 @@ async function getMyRole(userId, businessId) {
   return { businessId: Number(businessId), role: member.role };
 }
 
-module.exports = { create, listByUser, getById, update, getMyRole };
+function uploadBufferToCloudinary(buffer, businessId) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: 'akuntansi/logos', public_id: `business-${businessId}`, overwrite: true, resource_type: 'image' },
+      (err, result) => (err ? reject(err) : resolve(result))
+    );
+    stream.end(buffer);
+  });
+}
+
+async function assertOwner(userId, businessId) {
+  const db = require('../../config/database');
+  const existing = await repo.findById(businessId);
+  if (!existing) throw new ApiError(404, 'Business not found');
+  const member = await db.businessMember.findFirst({ where: { businessId: Number(businessId), userId } });
+  if (!member) throw new ApiError(403, 'Not a member of this business');
+  if (member.role !== 'owner') throw new ApiError(403, 'Only owner can change business logo');
+  return existing;
+}
+
+async function uploadLogo(userId, businessId, file) {
+  if (!file) throw new ApiError(400, 'Logo file is required');
+  if (!require('../../config/env').CLOUDINARY_CLOUD_NAME) throw new ApiError(503, 'Logo upload is not configured');
+  await assertOwner(userId, businessId);
+  let result;
+  try {
+    result = await uploadBufferToCloudinary(file.buffer, businessId);
+  } catch {
+    throw new ApiError(502, 'Logo upload failed');
+  }
+  return repo.updateById(businessId, { logoUrl: result.secure_url });
+}
+
+async function deleteLogo(userId, businessId) {
+  await assertOwner(userId, businessId);
+  try {
+    await cloudinary.uploader.destroy(`akuntansi/logos/business-${businessId}`);
+  } catch {
+    // asset already gone — still clear the column
+  }
+  return repo.updateById(businessId, { logoUrl: null });
+}
+
+module.exports = { create, listByUser, getById, update, getMyRole, uploadLogo, deleteLogo };
