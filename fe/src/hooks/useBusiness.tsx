@@ -11,6 +11,7 @@ export interface Business {
   taxId?: string | null;
   baseCurrency?: string;
   ownerUserId?: number;
+  logoUrl?: string | null;
 }
 
 const BID_KEY = "akuntansi.businessId";
@@ -24,6 +25,8 @@ interface BusinessContextValue {
   selectBusiness: (id: number) => void;
   createBusiness: (payload: { businessName: string; address?: string }) => Promise<Business>;
   updateBusiness: (businessId: number, payload: { businessName: string }) => Promise<Business>;
+  uploadBusinessLogo: (businessId: number, file: File) => Promise<Business>;
+  deleteBusinessLogo: (businessId: number) => Promise<Business>;
 }
 
 const BusinessContext = createContext<BusinessContextValue | null>(null);
@@ -140,6 +143,28 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
     [qc]
   );
 
+  const uploadBusinessLogo = useCallback(
+    async (businessId: number, file: File) => {
+      const form = new FormData();
+      form.append("logo", file);
+      const res = await api.post(`/businesses/${businessId}/logo`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      qc.invalidateQueries({ queryKey: ["businesses"] });
+      return res.data?.data;
+    },
+    [qc]
+  );
+
+  const deleteBusinessLogo = useCallback(
+    async (businessId: number) => {
+      const res = await api.delete(`/businesses/${businessId}/logo`);
+      qc.invalidateQueries({ queryKey: ["businesses"] });
+      return res.data?.data;
+    },
+    [qc]
+  );
+
   const business = useMemo(() => {
     if (!businessId) return null;
     return (q.data ?? []).find((b) => b.id === businessId) ?? null;
@@ -159,6 +184,8 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
     selectBusiness,
     createBusiness,
     updateBusiness,
+    uploadBusinessLogo,
+    deleteBusinessLogo,
   } as BusinessContextValue & { updateBusiness: typeof updateBusiness };
 
   return <BusinessContext.Provider value={value}>{children}</BusinessContext.Provider>;

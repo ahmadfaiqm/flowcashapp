@@ -50,7 +50,7 @@ function Placeholder({ t }: { t: string }) {
 
 function AppInner() {
   const { isAuthenticated, user, logout } = useAuth();
-  const { businesses, businessId, business, selectBusiness, createBusiness, updateBusiness, isLoading: bizLoading } = useBusiness() as ReturnType<typeof useBusiness> & { updateBusiness: (id: number, p: { businessName: string }) => Promise<unknown> };
+  const { businesses, businessId, business, selectBusiness, createBusiness, updateBusiness, uploadBusinessLogo, deleteBusinessLogo, isLoading: bizLoading } = useBusiness() as ReturnType<typeof useBusiness> & { updateBusiness: (id: number, p: { businessName: string }) => Promise<unknown> };
   const { accounts, isLoading: accLoading, create: createAccount, remove: removeAccount } = useAccounts();
   const { journals: entries, isLoading: jouLoading, create: createJournal, remove: removeJournal } = useJournals();
   const [page, setPage] = useState<PageKey>("dashboard");
@@ -194,9 +194,52 @@ function AppInner() {
           <p className="auth-subtitle">Buat atau pilih bisnis untuk melanjutkan</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 16 }}>
             {businesses.map((b) => (
-              <button key={b.id} className="primary-btn" onClick={() => selectBusiness(b.id)}>
-                {b.businessName} #{b.id}
-              </button>
+              <div key={b.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  className="primary-btn"
+                  style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}
+                  onClick={() => selectBusiness(b.id)}
+                >
+                  {b.logoUrl ? <img src={b.logoUrl} alt="" width={24} height={24} style={{ borderRadius: 4 }} /> : null}
+                  <span>
+                    {b.businessName} #{b.id}
+                  </span>
+                </button>
+                <label className="link-btn" title="Ubah logo">
+                  Logo
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    hidden
+                    onChange={async (ev) => {
+                      const file = ev.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        await uploadBusinessLogo(b.id, file);
+                        showToast("Logo diperbarui");
+                      } catch (e) {
+                        showToast(getApiErrorMessage(e), "err");
+                      }
+                      ev.target.value = "";
+                    }}
+                  />
+                </label>
+                {b.logoUrl ? (
+                  <button
+                    className="link-btn"
+                    onClick={async () => {
+                      try {
+                        await deleteBusinessLogo(b.id);
+                        showToast("Logo dihapus");
+                      } catch (e) {
+                        showToast(getApiErrorMessage(e), "err");
+                      }
+                    }}
+                  >
+                    Hapus
+                  </button>
+                ) : null}
+              </div>
             ))}
           </div>
           <form
