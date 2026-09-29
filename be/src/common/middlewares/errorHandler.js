@@ -2,6 +2,10 @@ const logger = require('../logger');
 
 // eslint-disable-next-line no-unused-vars
 module.exports = (err, req, res, next) => {
+  if (err && err.name === 'MulterError') {
+    err.statusCode = 400;
+    if (err.code === 'LIMIT_FILE_SIZE') err.message = 'Logo must not exceed 2 MB';
+  }
   const status = err.statusCode || 500;
   if (status >= 500) logger.error(err.stack || err.message);
   const body = { success: false, message: status >= 500 && process.env.NODE_ENV === 'production' ? 'Internal Server Error' : err.message || 'Internal Server Error' };
