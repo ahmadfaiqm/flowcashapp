@@ -1,0 +1,8 @@
+{
+  "buildCommand": "npm --prefix be install && npx --prefix be prisma generate && npm --prefix fe install && npm --prefix fe run build",
+  "outputDirectory": "fe/dist",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

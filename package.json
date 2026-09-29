@@ -3,10 +3,15 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
+    "dev": "concurrently \"npm run dev:be\" \"npm run dev:fe\"",
     "dev:be": "npm --prefix be run dev",
     "dev:fe": "npm --prefix fe run dev",
     "build:fe": "npm --prefix fe run build",
+    "build": "npm --prefix be install && npx --prefix be prisma generate && npm --prefix fe install && npm --prefix fe run build",
     "test:be": "npm --prefix be test",
     "lint:be": "npm --prefix be run lint"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
   }
 }
