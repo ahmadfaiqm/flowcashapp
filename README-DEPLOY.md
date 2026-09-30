@@ -21,7 +21,7 @@ Set di Project → Settings → Environment Variables:
 | `DIRECT_URL` | Supabase direct port 5432 (migrasi) |
 | `JWT_SECRET` | Random min 32 char, fresh untuk production |
 | `JWT_EXPIRES_IN` | `1d` |
-| `CORS_ORIGIN` | `https://<project>.vercel.app` |
+| `CORS_ORIGIN` | `https://simply-fawn.vercel.app` |
 | `NODE_ENV` | `production` |
 | `LOG_LEVEL` | `info` |
 | `CLOUDINARY_CLOUD_NAME` | Dari dashboard Cloudinary |
@@ -48,7 +48,7 @@ Set di Project → Settings → Environment Variables:
 
 ## 5. Verifikasi live (deletion gate — sudah lolos)
 
-- `GET https://<project>.vercel.app/api/v1/health` → `{ success: true }`
+- `GET https://simply-fawn.vercel.app/api/v1/health` → `{ success: true }`
 - Login, list/create business, satu round-trip CRUD product.
 - Logo upload + remove bekerja, logo tampil di FE, dan bertahan setelah login ulang
   (persistensi via Supabase + URL Cloudinary).
