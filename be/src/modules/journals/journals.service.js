@@ -1,4 +1,5 @@
 const prisma = require('../../config/database');
+const logger = require('../../common/logger');
 const ApiError = require('../../common/utils/ApiError');
 const { parsePagination, buildMeta } = require('../../common/utils/pagination');
 const repo = require('./journals.repository');
@@ -33,19 +34,33 @@ async function remove(businessId, id) {
     where: { businessId, year: dt.getFullYear(), month: dt.getMonth() + 1, status: 'closed' },
   });
   if (closed) throw new ApiError(403, 'Periode tertutup, tidak bisa void');
-  return prisma.$transaction(async (tx) => {
-    await tx.journal.update({ where: { id: Number(id) }, data: { status: 'void' } });
-    const reversalNo = `VOID-${existing.journalNo}-${Date.now()}`;
-    const rev = await tx.journal.create({
-      data: {
-        businessId,
-        journalNo: reversalNo,
-        journalDate: new Date(),
-        description: `Reversal ${existing.journalNo}`,
-        status: 'posted',
-        isAdjustment: false,
-      },
-    });
+  // Instrumentasi diagnostik (tanpa ubah perilaku): catat konteks sebelum transaksi
+  // agar 500 berikutnya langsung ketahuan penyebabnya di Vercel Logs.
+  const reversalNo = `VOID-${existing.journalNo}-${Date.now()}`;
+  logger.warn({
+    ctx: 'journal.remove.pre',
+    businessId,
+    journalId: Number(id),
+    journalNo: existing.journalNo,
+    journalNoLen: existing.journalNo.length,
+    status: existing.status,
+    linesCount: existing.lines.length,
+    reversalNo,
+    reversalNoLen: reversalNo.length,
+  });
+  try {
+    return await prisma.$transaction(async (tx) => {
+      await tx.journal.update({ where: { id: Number(id) }, data: { status: 'void' } });
+      const rev = await tx.journal.create({
+        data: {
+          businessId,
+          journalNo: reversalNo,
+          journalDate: new Date(),
+          description: `Reversal ${existing.journalNo}`,
+          status: 'posted',
+          isAdjustment: false,
+        },
+      });
     const revLines = existing.lines.map((l) => ({
       journalId: rev.id,
       coaId: l.coaId,
@@ -54,8 +69,22 @@ async function remove(businessId, id) {
       memo: `Reversal ${existing.journalNo}`,
     }));
     await tx.journalLine.createMany({ data: revLines });
-    return rev;
-  });
+      return rev;
+    });
+  } catch (e) {
+    logger.error({
+      ctx: 'journal.remove.fail',
+      businessId,
+      journalId: Number(id),
+      journalNo: existing.journalNo,
+      status: existing.status,
+      linesCount: existing.lines.length,
+      reversalNoLen: reversalNo.length,
+      code: e.code,
+      message: e.message,
+    });
+    throw e;
+  }
 }
 
 async function createManual(businessId, body) {
