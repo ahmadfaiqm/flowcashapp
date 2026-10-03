@@ -20,6 +20,8 @@ export interface JournalEntry {
   date: string;
   desc: string;
   lines: JournalLine[];
+  status?: string;
+  journalNo?: string;
 }
 
 export interface UserRecord {

@@ -12,13 +12,14 @@ const svc = require('../src/modules/journals/journals.service');
 describe('Journal remove P2000 regression', () => {
   afterEach(() => jest.resetAllMocks());
 
-  test('reversalNo selalu <=50 walau journalNo asli panjang (repro prod id 3)', async () => {
+  test('jurnal posted biasa: reversalNo pendek <=50', async () => {
     const existing = {
-      id: 3,
+      id: 5,
       businessId: 1,
-      journalNo: 'VOID-JU-MANUAL-1790779548712-1-1790779890159',
+      journalNo: 'JU-MANUAL-1790779548712-1',
       journalDate: new Date('2026-09-30'),
       status: 'posted',
+      description: 'Transaksi biasa',
       lines: [
         { coaId: 101, debit: 100, credit: 0 },
         { coaId: 102, debit: 0, credit: 100 },
@@ -40,7 +41,7 @@ describe('Journal remove P2000 regression', () => {
     };
     prisma.$transaction.mockImplementation(async (fn) => fn(fakeTx));
 
-    await svc.remove(1, 3);
+    await svc.remove(1, 5);
 
     expect(reversalNo).toBeTruthy();
     expect(reversalNo.length).toBeLessThanOrEqual(50);
@@ -61,6 +62,27 @@ describe('Journal remove P2000 regression', () => {
     prisma.accountingPeriod.findFirst.mockResolvedValue(null);
 
     await expect(svc.remove(1, 4)).rejects.toMatchObject({ statusCode: 400 });
+
+    repo.findById.mockRestore();
+  });
+
+  test('guard: jurnal reversal (VOID-) tidak bisa dihapus lagi (400, repro prod id 3)', async () => {
+    const existing = {
+      id: 3,
+      businessId: 1,
+      journalNo: 'VOID-JU-MANUAL-1790779548712-1-1790779890159',
+      journalDate: new Date('2026-09-30'),
+      status: 'posted',
+      description: 'Reversal JU-MANUAL-1790779548712-1',
+      lines: [
+        { coaId: 101, debit: 100, credit: 0 },
+        { coaId: 102, debit: 0, credit: 100 },
+      ],
+    };
+    jest.spyOn(repo, 'findById').mockResolvedValue(existing);
+    prisma.accountingPeriod.findFirst.mockResolvedValue(null);
+
+    await expect(svc.remove(1, 3)).rejects.toMatchObject({ statusCode: 400 });
 
     repo.findById.mockRestore();
   });

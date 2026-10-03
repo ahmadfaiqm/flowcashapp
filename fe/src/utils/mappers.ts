@@ -86,6 +86,8 @@ export function mapJournalToEntry(j: BackendJournal): JournalEntry {
     date,
     desc: j.description || j.journalNo || "",
     lines,
+    status: j.status,
+    journalNo: j.journalNo,
   };
 }
 

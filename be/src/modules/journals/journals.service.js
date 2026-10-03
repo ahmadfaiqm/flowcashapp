@@ -29,6 +29,10 @@ async function remove(businessId, id) {
   const existing = await repo.findById(businessId, id);
   if (!existing) throw new ApiError(404, 'Journal not found');
   if (existing.status === 'void') throw new ApiError(400, 'Jurnal sudah void, tidak bisa dihapus lagi');
+  const isReversal =
+    String(existing.journalNo || '').startsWith('VOID-') ||
+    String(existing.description || '').startsWith('Reversal ');
+  if (isReversal) throw new ApiError(400, 'Jurnal reversal tidak bisa dihapus');
   const dt = new Date(existing.journalDate);
   const closed = await prisma.accountingPeriod.findFirst({
     where: { businessId, year: dt.getFullYear(), month: dt.getMonth() + 1, status: 'closed' },

@@ -203,16 +203,27 @@ export function GeneralJournal({ accounts, entries, onAdd, onDelete }: GeneralJo
         {sorted.length === 0 ? (
           <p className="empty-text">Belum ada transaksi.</p>
         ) : (
-          sorted.map((e) => (
+          sorted.map((e) => {
+            const isVoid = e.status === "void";
+            const isReversal = (e.journalNo || "").startsWith("VOID-") || e.desc.startsWith("Reversal ");
+            const locked = isVoid || isReversal;
+            return (
             <div key={e.id} className="journal-entry-card">
               <div className="journal-entry-head">
                 <div>
                   <div className="journal-entry-date">{formatDate(e.date)}</div>
                   <div className="journal-entry-desc">{e.desc}</div>
+                  {locked ? (
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                      {isReversal ? "Reversal — tidak bisa dihapus" : "Void — tidak bisa dihapus lagi"}
+                    </div>
+                  ) : null}
                 </div>
+                {locked ? null : (
                 <button className="link-btn" onClick={() => onDelete(e.id)}>
                   Hapus
                 </button>
+                )}
               </div>
               <div className="table-wrap">
                 <table>
@@ -233,7 +244,8 @@ export function GeneralJournal({ accounts, entries, onAdd, onDelete }: GeneralJo
                 </table>
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
