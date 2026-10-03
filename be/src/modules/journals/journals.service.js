@@ -1,5 +1,4 @@
 const prisma = require('../../config/database');
-const logger = require('../../common/logger');
 const ApiError = require('../../common/utils/ApiError');
 const { parsePagination, buildMeta } = require('../../common/utils/pagination');
 const repo = require('./journals.repository');
@@ -29,25 +28,15 @@ async function getById(businessId, id) {
 async function remove(businessId, id) {
   const existing = await repo.findById(businessId, id);
   if (!existing) throw new ApiError(404, 'Journal not found');
+  if (existing.status === 'void') throw new ApiError(400, 'Jurnal sudah void, tidak bisa dihapus lagi');
   const dt = new Date(existing.journalDate);
   const closed = await prisma.accountingPeriod.findFirst({
     where: { businessId, year: dt.getFullYear(), month: dt.getMonth() + 1, status: 'closed' },
   });
   if (closed) throw new ApiError(403, 'Periode tertutup, tidak bisa void');
-  // Instrumentasi diagnostik (tanpa ubah perilaku): catat konteks sebelum transaksi
-  // agar 500 berikutnya langsung ketahuan penyebabnya di Vercel Logs.
-  const reversalNo = `VOID-${existing.journalNo}-${Date.now()}`;
-  logger.warn({
-    ctx: 'journal.remove.pre',
-    businessId,
-    journalId: Number(id),
-    journalNo: existing.journalNo,
-    journalNoLen: existing.journalNo.length,
-    status: existing.status,
-    linesCount: existing.lines.length,
-    reversalNo,
-    reversalNoLen: reversalNo.length,
-  });
+  // Format pendek agar selalu <= VarChar(50): VOID-<Date.now()>-<businessId> (~20 char).
+  // Format lama VOID-<orig>-<ts> meledak P2000 saat void sebuah Reversal (L2 ~63 char).
+  const reversalNo = `VOID-${Date.now()}-${businessId}`;
   try {
     return await prisma.$transaction(async (tx) => {
       await tx.journal.update({ where: { id: Number(id) }, data: { status: 'void' } });
@@ -72,17 +61,7 @@ async function remove(businessId, id) {
       return rev;
     });
   } catch (e) {
-    logger.error({
-      ctx: 'journal.remove.fail',
-      businessId,
-      journalId: Number(id),
-      journalNo: existing.journalNo,
-      status: existing.status,
-      linesCount: existing.lines.length,
-      reversalNoLen: reversalNo.length,
-      code: e.code,
-      message: e.message,
-    });
+    if (e.code === 'P2002') throw new ApiError(409, 'Nomor reversal bentrok, coba lagi');
     throw e;
   }
 }

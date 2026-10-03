@@ -189,7 +189,8 @@ describe('Jurnal Penyesuaian & Void Reversal + Period Guard', () => {
 
     expect(updatedToVoid.data.status).toBe('void');
     expect(reversalData.journalNo).toMatch(/^VOID-/);
-    expect(reversalData.journalNo).toContain('JU-MANUAL-1');
+    expect(reversalData.journalNo.length).toBeLessThanOrEqual(50);
+    expect(reversalData.description).toContain('JU-MANUAL-1');
     expect(revLines).toBeTruthy();
     expect(revLines[0].debit).toBe(0);
     expect(revLines[0].credit).toBe(500000);

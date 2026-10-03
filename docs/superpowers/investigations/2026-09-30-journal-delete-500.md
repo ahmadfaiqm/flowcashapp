@@ -1,6 +1,6 @@
 # Investigasi: DELETE jurnal 500 + reversal misterius (production)
 
-Tanggal: 2026-09-30. Status: TERBUKA — menunggu stack trace dari Vercel Logs.
+Tanggal: 2026-09-30. Status: ROOT CAUSE TERBUKTI 2026-10-04 — fix diimplementasi, menunggu verifikasi production.
 URL: https://simply-fawn.vercel.app
 
 ## Gejala (laporan user)
@@ -25,12 +25,13 @@ URL: https://simply-fawn.vercel.app
 - Alasan gugur: retry selang detik-menit tetap 500; tabrakan butuh same-millisecond.
 - 3 reversal kemungkinan dari delete sukses sebelumnya (mis. /2), bukan dari request 500.
 
-## Hipotesis 2 (AKTIF): data-dependent, gagal di dalam transaksi → rollback total
+## Hipotesis 2 (GUGUR): data-dependent, gagal di dalam transaksi → rollback total
 - Kandidat: jurnal tanpa lines → `createMany({data: []})` ditolak Prisma → 500 + rollback.
+- Alasan gugur: bukti prod id 3 `linesCount: 2`, bukan 0.
 - Cocok dengan: 500 konsisten per ID, baris asli utuh, reversal tidak bertambah dari request 500.
 - Belum terbukti — butuh stack trace.
 
-## Hipotesis 3 (BARU, KUAT): reversal level-2 melebihi VarChar(50)
+## Hipotesis 3 (TERBUKTI 2026-10-04): reversal level-2 melebihi VarChar(50)
 - Skema: `journalNo VarChar(50)` (`schema.prisma:169`).
 - Format: `VOID-<orig>-<Date.now()>` (`journals.service.js:39`).
 - Hitungan terverifikasi (node): original ~25 char → reversal L1 ~44 char (lolos)
@@ -47,6 +48,22 @@ URL: https://simply-fawn.vercel.app
   di Vercel Logs pada 500 berikutnya.
 - Cara baca hasil: jika `reversalNoLen > 50` → Hipotesis 3 terbukti.
   Jika `linesCount === 0` → Hipotesis 2 terbukti.
+
+## Bukti prod (2026-10-04, dari Vercel Logs — TERBUKTI)
+- `DELETE /api/v1/journals/3` → 500 konsisten setelah login sukses.
+- `ctx journal.remove.fail`: `code P2000`, `Invalid prisma.journal.create() ... too long for the column's type`,
+  `journalNo: VOID-JU-MANUAL-1790779548712-1-1790779890159`, `reversalNoLen: 63`, `linesCount: 2`, `status: posted`.
+- Artinya: yang dihapus adalah baris Reversal L1 (status posted), format lama
+  `VOID-<orig>-<ts>` menghasilkan 63 char > VarChar(50) → P2000 → rollback total.
+
+## Fix (2026-10-04, TDD)
+- Test: `be/tests/journals-remove.test.js` (repro 63 char + guard void) — RED lalu GREEN.
+- `be/src/modules/journals/journals.service.js: remove()`:
+  1. format `VOID-<Date.now()>-<businessId>` (~20 char, selalu <= 50, referensi orig tetap di `description`/`memo`);
+  2. guard `status === 'void'` → 400;
+  3. map P2002 → 409.
+- `be/tests/journals-adjustment.test.js` diupdate ke format baru (assert `<=50` + `description` berisi orig).
+- Full suite: 10/11 suites pass; `sak-schema` gagal pre-existing karena `DATABASE_URL` tidak ada (butuh DB asli, tidak terkait).
 
 ## Bukti yang diminta (belum diterima)
 - Expand salah satu baris DELETE 500 di Vercel Logs (badge "2" = 2 log events) → copy stack trace `logger.error`.
