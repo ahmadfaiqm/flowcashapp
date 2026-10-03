@@ -65,7 +65,18 @@ URL: https://simply-fawn.vercel.app
 - `be/tests/journals-adjustment.test.js` diupdate ke format baru (assert `<=50` + `description` berisi orig).
 - Full suite: 10/11 suites pass; `sak-schema` gagal pre-existing karena `DATABASE_URL` tidak ada (butuh DB asli, tidak terkait).
 
-## Bukti yang diminta (belum diterima)
+## Fix lanjutan (2026-10-04): NSD dangling setelah hapus
+- Gejala: transaksi dihapus → NS 0/kosong tapi NSD masih ada nominal.
+- Root cause: void = original → `void` (excluded dari laporan) + reversal
+  `VOID-*` → `posted` (ikut di laporan sendirian). NS=0 karena FE menjumlah
+  void+reversal (saling hapus); NSD nominal karena BE hanya hitung `posted`.
+- Fix: kecualikan `journalNo NOT startsWith VOID-` di semua agregasi
+  `be/src/modules/reports/reports.repository.js` (worksheet, balance sheet,
+  revenue/expense, cashflow) + `periods.service.js` (year/month close) agar
+  hapus = hilang total dari NS dan NSD. Tanpa migrasi; data reversal lama
+  otomatis excluded.
+- Test: `be/tests/reports-reversal-excluded.test.js` (RED→GREEN). Full suite
+  11/11 pass (sak-schema di-skip, butuh DATABASE_URL asli).
 - Expand salah satu baris DELETE 500 di Vercel Logs (badge "2" = 2 log events) → copy stack trace `logger.error`.
 - Konfirmasi: baris asli berstatus apa (posted/void)? Reversal ada 1 per delete sukses?
 

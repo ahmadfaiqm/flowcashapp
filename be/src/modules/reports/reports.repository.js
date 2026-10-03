@@ -16,6 +16,13 @@ function buildDateFilterObj(from, to) {
   return f;
 }
 
+// Jurnal reversal (journalNo awalan VOID-) adalah artefak void: jurnal asli
+// berstatus void sudah excluded, jadi reversal yang tertinggal sendirian harus
+// ikut excluded agar void = hilang total dari laporan (tidak dangling).
+function nonReversalJournalNo() {
+  return { not: { startsWith: 'VOID-' } };
+}
+
 async function salesAggregate(businessId, from, to) {
   const where = { businessId, ...buildDateFilter('invoiceDate', from, to) };
   const result = await prisma.salesInvoice.aggregate({
@@ -124,7 +131,7 @@ async function depreciationCount(businessId, from, to) {
 async function journalExpenseAggregate(businessId, from, to) {
   const where = {
     coa: { businessId, accountType: 'Expense' },
-    journal: { businessId, status: 'posted' },
+    journal: { businessId, status: 'posted', journalNo: nonReversalJournalNo() },
   };
   const dateFilter = buildDateFilterObj(from, to);
   if (dateFilter) where.journal.journalDate = dateFilter;
@@ -138,7 +145,7 @@ async function journalExpenseAggregate(businessId, from, to) {
 async function journalRevenueAggregate(businessId, from, to) {
   const where = {
     coa: { businessId, accountType: 'Revenue' },
-    journal: { businessId, status: 'posted' },
+    journal: { businessId, status: 'posted', journalNo: nonReversalJournalNo() },
   };
   const dateFilter = buildDateFilterObj(from, to);
   if (dateFilter) where.journal.journalDate = dateFilter;
@@ -194,7 +201,7 @@ async function findCoAs(businessId) {
 
 async function journalLineGroupsByCoA(businessId, from, to, isAdjustment) {
   const where = {
-    journal: { businessId, status: 'posted', ...buildDateFilter('journalDate', from, to) },
+    journal: { businessId, status: 'posted', journalNo: nonReversalJournalNo(), ...buildDateFilter('journalDate', from, to) },
     coa: { businessId },
   };
   if (isAdjustment !== undefined && isAdjustment !== null) where.journal.isAdjustment = isAdjustment;
@@ -203,7 +210,7 @@ async function journalLineGroupsByCoA(businessId, from, to, isAdjustment) {
 
 async function journalLineGroupsBefore(businessId, beforeDate) {
   const where = {
-    journal: { businessId, status: 'posted', journalDate: { lt: new Date(beforeDate) } },
+    journal: { businessId, status: 'posted', journalNo: nonReversalJournalNo(), journalDate: { lt: new Date(beforeDate) } },
     coa: { businessId },
   };
   return prisma.journalLine.groupBy({ by: ['coaId'], where, _sum: { debit: true, credit: true } });
@@ -213,7 +220,7 @@ async function journalLineGroupsBefore(businessId, beforeDate) {
 async function balanceSheetAggregate(businessId, from, to) {
   const coas = await findCoAs(businessId);
   // Balance sheet is snapshot at `to` (or now) — not BETWEEN; `from` ignored to include opening balances
-  let whereJournal = { businessId, status: 'posted' };
+  let whereJournal = { businessId, status: 'posted', journalNo: nonReversalJournalNo() };
   if (to) {
     whereJournal.journalDate = { lte: new Date(to) };
   } else if (from && !to) {
@@ -253,11 +260,11 @@ async function balanceSheetAggregate(businessId, from, to) {
   let netIncome = 0;
   if (from || to) {
     const revAgg = await prisma.journalLine.aggregate({
-      where: { journal: { businessId, status: 'posted', ...buildDateFilter('journalDate', from, to) }, coa: { businessId, accountType: 'Revenue' } },
+      where: { journal: { businessId, status: 'posted', journalNo: nonReversalJournalNo(), ...buildDateFilter('journalDate', from, to) }, coa: { businessId, accountType: 'Revenue' } },
       _sum: { debit: true, credit: true },
     });
     const expAgg = await prisma.journalLine.aggregate({
-      where: { journal: { businessId, status: 'posted', ...buildDateFilter('journalDate', from, to) }, coa: { businessId, accountType: 'Expense' } },
+      where: { journal: { businessId, status: 'posted', journalNo: nonReversalJournalNo(), ...buildDateFilter('journalDate', from, to) }, coa: { businessId, accountType: 'Expense' } },
       _sum: { debit: true, credit: true },
     });
     const rev = Number(revAgg._sum.credit || 0) - Number(revAgg._sum.debit || 0);
@@ -291,6 +298,7 @@ async function cashFlowAggregate(businessId, from, to) {
       where: {
         businessId,
         status: 'posted',
+        journalNo: nonReversalJournalNo(),
         ...buildDateFilter('journalDate', from, to),
         // transfer journals contain TRF in journalNo or have cash COA lines; simplified: count all posted journals in period
       },
@@ -309,7 +317,7 @@ async function cashFlowAggregate(businessId, from, to) {
   try {
     const cashLines = await prisma.journalLine.aggregate({
       where: {
-        journal: { businessId, status: 'posted', ...buildDateFilter('journalDate', from, to) },
+        journal: { businessId, status: 'posted', journalNo: nonReversalJournalNo(), ...buildDateFilter('journalDate', from, to) },
         coa: { businessId, accountType: 'Asset' },
       },
       _sum: { debit: true, credit: true },

@@ -34,7 +34,7 @@ async function close(businessId, { year, month }) {
       const revGroups = await tx.journalLine.groupBy({
         by: ['coaId'],
         where: {
-          journal: { businessId, status: 'posted', periodYear: year },
+          journal: { businessId, status: 'posted', journalNo: { not: { startsWith: 'VOID-' } }, periodYear: year },
           coa: { businessId, accountType: 'Revenue' },
         },
         _sum: { debit: true, credit: true },
@@ -43,7 +43,7 @@ async function close(businessId, { year, month }) {
       const expGroups = await tx.journalLine.groupBy({
         by: ['coaId'],
         where: {
-          journal: { businessId, status: 'posted', periodYear: year },
+          journal: { businessId, status: 'posted', journalNo: { not: { startsWith: 'VOID-' } }, periodYear: year },
           coa: { businessId, accountType: 'Expense' },
         },
         _sum: { debit: true, credit: true },
@@ -152,7 +152,7 @@ async function close(businessId, { year, month }) {
 
   // Month close: check NS balanced via trial balance query then create AccountingPeriod closed
   const agg = await prisma.journalLine.aggregate({
-    where: { journal: { businessId, status: 'posted', periodYear: year, periodMonth: month } },
+    where: { journal: { businessId, status: 'posted', journalNo: { not: { startsWith: 'VOID-' } }, periodYear: year, periodMonth: month } },
     _sum: { debit: true, credit: true },
   });
   const sumDebit = Number(agg._sum.debit || 0);
@@ -168,7 +168,7 @@ async function close(businessId, { year, month }) {
     if (dup2 && dup2.status === 'closed') throw new ApiError(409, 'Periode sudah ditutup');
     // double-check balance inside tx
     const aggTx = await tx.journalLine.aggregate({
-      where: { journal: { businessId, status: 'posted', periodYear: year, periodMonth: month } },
+      where: { journal: { businessId, status: 'posted', journalNo: { not: { startsWith: 'VOID-' } }, periodYear: year, periodMonth: month } },
       _sum: { debit: true, credit: true },
     });
     const d = Number(aggTx._sum.debit || 0);
